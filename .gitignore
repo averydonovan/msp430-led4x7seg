@@ -1,0 +1,10 @@
+.launches/
+.settings/
+Debug/
+Release/
+targetConfigs/
+.ccsproject
+.cproject
+.project
+lnk_msp430*
+
