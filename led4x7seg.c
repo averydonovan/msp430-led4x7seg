@@ -33,6 +33,7 @@
 #define DLY_1S		4096 - 1
 #define DLY_512TH	7
 #define DLY_1024TH	3
+#define DLY_TIMEOUT 10
 
 
 /*
@@ -72,6 +73,8 @@ volatile uint8_t dispCurDigit = 0;
 
 volatile int_fast16_t aNumber = -999;
 
+volatile uint_fast8_t timeout = DLY_TIMEOUT;
+
 void dispDigits(int_fast16_t num);
 
 void main(void) {
@@ -84,6 +87,10 @@ void main(void) {
 	P2OUT = 0;
 	P3DIR = 0xFF;	// P3 doesn't exist on PDIP20 pinout but is on die
 	P3OUT = 0;
+
+	P2REN |= BIT5;    // Enable pull-up resistor for P2.5
+	P2DIR &= ~BIT5;   // Use P2.5 for button
+	P2OUT |= BIT5;
 
 	DCOCTL  = 0;
 	BCSCTL1 = CALBC1_16MHZ; // Run at 16 MHz
@@ -116,17 +123,26 @@ void main(void) {
 
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void Timer_A0(void) {
-	dispCurDigit &= 0b00000011; // Make sure value doesn't exceed 3
+	if (!(P2IN & BIT5)) {
+		timeout = DLY_TIMEOUT;
+	}
 
-	P1OUT = 0x00;	// Clear P1
-	P2OUT = 0x0F;	// Set P2.0-2.3 high
+	if (timeout) {
+		dispCurDigit &= 0b00000011; // Make sure value doesn't exceed 3
 
-	// Only set cathode for digit being displayed to low
-	P2OUT &= ~((0b1000 >> dispCurDigit) | 0xF0);
-	// Display digit
-	P1OUT = dispBuffer[dispCurDigit];
+		P1OUT = 0x00;	// Clear P1
+		P2OUT |= 0x0F;	// Set P2.0-2.3 high
 
-	dispCurDigit++;
+		// Only set cathode for digit being displayed to low
+		P2OUT &= ~(0b1000 >> dispCurDigit);
+		// Display digit
+		P1OUT = dispBuffer[dispCurDigit];
+
+		dispCurDigit++;
+	} else {
+		P1OUT = 0x00;	// Clear P1
+		P2OUT &= ~0x0F;	// Set P2.0-2.3 low
+	}
 }
 
 #pragma vector=TIMER1_A0_VECTOR
@@ -134,6 +150,9 @@ __interrupt void Timer_A1(void) {
 	aNumber++;
 	if (aNumber > 9999)
 		aNumber = -999;
+
+	if (timeout)
+		timeout--;
 
 	__bic_SR_register_on_exit(LPM3_bits);	// Exit LPM3 on interrupt return
 }
