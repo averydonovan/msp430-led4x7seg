@@ -1,6 +1,30 @@
 /*
  * Demonstration of using a 4-character 7-segment LED display and multiple
- * timers on the MSP430G2553
+ * timers.
+ *
+ * Written for MSP430G2553 but might work for other MSP430G2xxx devices with
+ * at least two timers, such as the MSP430G2x53 and MSPG2x13.
+ *
+ * Used LED display part KYX-5461AS hooked as follows:
+ *   Pin 11 (Segment A) --- P1.6
+ *   Pin  7 (Segment B) --- P1.5
+ *   Pin  4 (Segment C) --- P1.4
+ *   Pin  2 (Segment D) --- P1.3
+ *   Pin  1 (Segment E) --- P1.2
+ *   Pin 10 (Segment F) --- P1.1
+ *   Pin  5 (Segment G) --- P1.0
+ *   Pin  3 (Segment DP) -- P1.7
+ *   Pin 12 (Digit 1) ----- P2.3
+ *   Pin  9 (Digit 2) ----- P2.2
+ *   Pin  8 (Digit 3) ----- P2.1
+ *   Pin  6 (Digit 4) ----- P2.0
+ *
+ * Where display device is as follows:
+ *   Pins     12 11 10  9  8  7
+ *           +-----------------+
+ *   Digits  |  1.  2.  3.  4. |  <-- KYX-5461AS
+ *           +-----------------+
+ *   Pins      1  2  3  4  5  6
  */
 
 #include <msp430.h>
@@ -46,7 +70,7 @@ const uint8_t segLets[7] = {
 volatile uint8_t dispBuffer[4];
 volatile uint8_t dispCurDigit = 0;
 
-volatile uint_fast16_t aNumber = 0;
+volatile int_fast16_t aNumber = -999;
 
 void dispDigits(int_fast16_t num);
 
@@ -58,36 +82,35 @@ void main(void) {
 	P1OUT = 0;
 	P2DIR = 0xFF;
 	P2OUT = 0;
-	P3DIR = 0xFF;
+	P3DIR = 0xFF;	// P3 doesn't exist on PDIP20 pinout but is on die
 	P3OUT = 0;
 
-	BCSCTL1 = CALBC1_16MHZ; // Running at 16 MHz
-	DCOCTL = CALDCO_16MHZ;
+	DCOCTL  = 0;
+	BCSCTL1 = CALBC1_16MHZ; // Run at 16 MHz
+	DCOCTL  = CALDCO_16MHZ;
 
 	BCSCTL1 |= DIVA_3; 	// Divide ACLK by 8
 	BCSCTL3 |= XCAP_3; 	// Set 12.5pF for crystal
 
 	// Timer for display refresh
-	TA0CCR0 = 	DLY_512TH; 			// 1/512s delay time
-	TA0CCTL0 = 	CCIE; 				// Perform interrupt when time reached
-	TA0CTL |= 	TASSEL_1 | MC_1; 	// Use ACLK, count up mode
+	TA0CCR0  = DLY_512TH; 			// 1/512s delay time
+	TA0CCTL0 = CCIE; 				// Perform interrupt when time reached
+	TA0CTL   = TASSEL_1 + MC_1; 	// Use ACLK, count up mode
 
 	// Timer for count up display
-	TA1CCR0 = 	DLY_1S; 			// 1s delay time
-	TA1CCTL0 = 	CCIE; 				// Perform interrupt when time reached
-	TA1CTL |= 	TASSEL_1 | MC_1; 	// Use ACLK, count up mode
+	TA1CCR0  = DLY_1S; 			// 1s delay time
+	TA1CCTL0 = CCIE; 				// Perform interrupt when time reached
+	TA1CTL   = TASSEL_1 + MC_1; 	// Use ACLK, count up mode
 
 	uint_fast8_t count;
 
 	for (count = 4; count; --count)
 		dispBuffer[count] = 0x00;	// Initialize array
 
-	dispDigits(aNumber);
-
-	__enable_interrupt();	// Enable interrupts
-
 	while (1) {
-		__bis_SR_register(LPM3 | GIE);	// Set LPM3, allow intterupts on ACLK
+		dispDigits(aNumber);
+
+		__bis_SR_register(LPM3_bits + GIE);	// Set LPM3, allow interrupts on ACLK
 	}
 }
 
@@ -110,31 +133,27 @@ __interrupt void Timer_A0(void) {
 __interrupt void Timer_A1(void) {
 	aNumber++;
 	if (aNumber > 9999)
-		aNumber = 0;
+		aNumber = -999;
 
-	uint_fast8_t count;
-	uint_fast16_t num = aNumber;
-
-	for (count = 4; count; --count) {
-		dispBuffer[count - 1] = segNums[(num%10)];
-		num = num/10;
-	}
+	__bic_SR_register_on_exit(LPM3_bits);	// Exit LPM3 on interrupt return
 }
 
 void dispDigits(int_fast16_t num) {
 	uint_fast8_t count;
+	uint_fast16_t numU;
+	uint_fast8_t offset;
 
 	if (num >= 0) {
-		for (count = 4; count; --count) {
-			dispBuffer[count - 1] = segNums[(num%10)];
-			num = num/10;
-		}
+		numU = num;
+		offset = 1;
 	} else {
 		dispBuffer[0] = 0x01; 	// Minus sign as first character
-		num = num * -1;			// Need to turn into positive number now
-		for (count = 3; count; --count) {
-			dispBuffer[count] = segNums[(num%10)];
-			num = num/10;
-		}
+		numU = ~num + 1; 		// Convert to unsigned int by inverse of one's complement + 1
+		offset = 0;
+	}
+
+	for (count = 3 + offset; count; count--) {
+		dispBuffer[count - offset] = segNums[numU%10];
+		numU = numU/10;
 	}
 }
