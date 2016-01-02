@@ -1,9 +1,42 @@
 /*
+ * Copyright (c) 2016, Donovan Smith
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived from this
+ *    software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/*
  * Demonstration of using a 4-character 7-segment LED display and multiple
  * timers.
  *
  * Written for MSP430G2553 but might work for other MSP430G2xxx devices with
  * at least two timers, such as the MSP430G2x53 and MSPG2x13.
+ *
+ * Written using Code Composer Studio v6.1.
  *
  * Used LED display part KYX-5461AS hooked as follows:
  *   Pin 11 (Segment A) --- P1.6
@@ -34,7 +67,6 @@
 #define DLY_512TH	7
 #define DLY_1024TH	3
 #define DLY_TIMEOUT 10
-
 
 /*
  * Bit  7  6  5  4  3  2  1  0
@@ -105,7 +137,7 @@ void main(void) {
 	TA0CTL   = TASSEL_1 + MC_1; 	// Use ACLK, count up mode
 
 	// Timer for count up display
-	TA1CCR0  = DLY_1S; 			// 1s delay time
+	TA1CCR0  = DLY_1S; 				// 1s delay time
 	TA1CCTL0 = CCIE; 				// Perform interrupt when time reached
 	TA1CTL   = TASSEL_1 + MC_1; 	// Use ACLK, count up mode
 
@@ -124,14 +156,15 @@ void main(void) {
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void Timer_A0(void) {
 	if (!(P2IN & BIT5)) {
-		timeout = DLY_TIMEOUT;
+		timeout = DLY_TIMEOUT;		// Button pressed, reset timeout
 	}
 
-	if (timeout) {
+
+	if (timeout) {					// Only refresh display if not timed out
 		dispCurDigit &= 0b00000011; // Make sure value doesn't exceed 3
 
-		P1OUT = 0x00;	// Clear P1
-		P2OUT |= 0x0F;	// Set P2.0-2.3 high
+		P1OUT = 0x00;				// Clear P1
+		P2OUT |= 0x0F;				// Set P2.0-2.3 high
 
 		// Only set cathode for digit being displayed to low
 		P2OUT &= ~(0b1000 >> dispCurDigit);
@@ -139,9 +172,9 @@ __interrupt void Timer_A0(void) {
 		P1OUT = dispBuffer[dispCurDigit];
 
 		dispCurDigit++;
-	} else {
-		P1OUT = 0x00;	// Clear P1
-		P2OUT &= ~0x0F;	// Set P2.0-2.3 low
+	} else {						// Timed out so make sure display off
+		P1OUT = 0x00;				// Clear P1
+		P2OUT &= ~0x0F;				// Set P2.0-2.3 low
 	}
 }
 
@@ -149,7 +182,7 @@ __interrupt void Timer_A0(void) {
 __interrupt void Timer_A1(void) {
 	aNumber++;
 	if (aNumber > 9999)
-		aNumber = -999;
+		aNumber = -999;		// Reset timer since past 9999
 
 	if (timeout)
 		timeout--;
@@ -162,17 +195,19 @@ void dispDigits(int_fast16_t num) {
 	uint_fast16_t numU;
 	uint_fast8_t offset;
 
-	if (num >= 0) {
+	if (num >= 0) {				// Number is positive, effectively already unsigned
 		numU = num;
 		offset = 1;
-	} else {
+	} else {					// Number is negative
 		dispBuffer[0] = 0x01; 	// Minus sign as first character
 		numU = ~num + 1; 		// Convert to unsigned int by inverse of one's complement + 1
 		offset = 0;
 	}
 
 	for (count = 3 + offset; count; count--) {
-		dispBuffer[count - offset] = segNums[numU%10];
+		// Remainder of number divided by 10 is the last digit of the number
+		dispBuffer[count - offset] = segNums[numU%10];	// Display last digit
+		// Divide by 10 to effectively move one digit left in number
 		numU = numU/10;
 	}
 }
