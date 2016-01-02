@@ -26,6 +26,8 @@ Used LED display part KYX-5461AS hooked as follows:
 Where display device is as follows:
 
 ```
+
+Where display device is as follows:
     Pins     12 11 10  9  8  7
             +-----------------+
     Digits  |  1.  2.  3.  4. |  <-- KYX-5461AS
